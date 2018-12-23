@@ -37,15 +37,20 @@ private:
 
     Buffer get()
     {
-        Buffer response;
+        Header header;
+        header.type = static_cast<std::underlying_type<PacketType>::type>
+            (PacketType::GetPaddlesPositions);
 
         Info info;
         info.role = static_cast<std::underlying_type<ClientType>::type>
             (state.getClientRole(client));
-        bufferInsert(response, info);
 
         Pack pack;
         pack.size = state.paddles.size();
+
+        Buffer response;
+        bufferInsert(response, header);
+        bufferInsert(response, info);
         bufferInsert(response, pack);
 
         PaddlePosition paddle;

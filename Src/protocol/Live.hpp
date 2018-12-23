@@ -34,15 +34,20 @@ private:
 
     Buffer get()
     {
-        Buffer response;
+        Header header;
+        header.type = static_cast<std::underlying_type<PacketType>::type>
+            (PacketType::GetNumberLives);
 
         Info info;
         info.role = static_cast<std::underlying_type<ClientType>::type>
             (state.getClientRole(client));
-        bufferInsert(response, info);
 
         Lives lives;
         lives.number = state.lives;
+
+        Buffer response;
+        bufferInsert(response, header);
+        bufferInsert(response, info);
         bufferInsert(response, lives);
 
         return response;

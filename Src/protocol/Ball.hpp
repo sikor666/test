@@ -34,12 +34,16 @@ private:
 
     Buffer get()
     {
-        Buffer response;
+        Header header;
+        header.type = static_cast<std::underlying_type<PacketType>::type>
+            (PacketType::GetBallParameters);
 
         Info info;
         info.role = static_cast<std::underlying_type<ClientType>::type>
             (state.getClientRole(client));
 
+        Buffer response;
+        bufferInsert(response, header);
         bufferInsert(response, info);
         bufferInsert(response, state.ball);
 

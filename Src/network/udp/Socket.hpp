@@ -15,6 +15,7 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <fcntl.h>
 #endif
 
 #include <iostream>
@@ -44,6 +45,9 @@ void Throw(Args&&... args)
 
 constexpr auto SERV_ADDR = "224.0.0.1";
 constexpr auto SERV_PORT = "9877";
+
+constexpr auto STUN_ADDR = "216.93.246.18";
+constexpr auto STUN_PORT = "3478";
 
 namespace UDP
 {
@@ -94,10 +98,58 @@ public:
 
     void connect(const char *host, const char *serv)
     {
-        if (udp_mcast_client(host, serv) < 0)
+        if (udp_connect(host, serv) < 0)
         {
             Throw("udp connect error for ", host, ":", serv);
         }
+    }
+
+    void unblock()
+    {
+#if defined _WIN32
+        int result;
+        u_long mode = 1;
+
+        result = ioctlsocket(sockfd, FIONBIO, &mode);
+        if (result != NO_ERROR)
+        {
+            Throw("ioctlsocket failed with error : ", result);
+        }
+#else
+        // 4Set socket nonblocking
+        int flags;
+
+        if ((flags = fcntl(sockfd, F_GETFL, 0)) == -1)
+        {
+            Throw("fcntl error: F_GETFL");
+        }
+
+        if ((flags = fcntl(sockfd, F_SETFL, flags | O_NONBLOCK)) == -1)
+        {
+            Throw("fcntl error: F_SETFL");
+        }
+#endif
+    }
+
+    bool ready() // read from socket
+    {
+        fd_set rset;
+        timeval time;
+        time.tv_sec = 0;
+        time.tv_usec = 0;
+
+        int maxfdp1 = sockfd + 1;
+
+        FD_ZERO(&rset);
+        FD_SET(sockfd, &rset);
+
+        int n;
+        if ((n = select(maxfdp1, &rset, NULL, NULL, &time)) < 0)
+        {
+            Throw("select error");
+        }
+
+        return FD_ISSET(sockfd, &rset);
     }
 
     int recv_from(Buffer& buffer, std::string& endpoint)
@@ -124,7 +176,9 @@ public:
     {
         socklen_t len = sizeof(saddr);
 
-        if (sendto(sockfd, buffer, length, 0, (sockaddr *)&saddr, len) != length)
+        int n;
+
+        if ((n = sendto(sockfd, buffer, length, 0, (sockaddr *)&saddr, len)) < 0)
         {
             Throw("sendto error");
         }

@@ -29,10 +29,15 @@ private:
     {
         auto role = state.addClient(client);
 
+        Header header;
+        header.type = static_cast<std::underlying_type<PacketType>::type>
+            (PacketType::Connect);
+
         Info info;
         info.role = static_cast<std::underlying_type<ClientType>::type>(role);
 
         Buffer response;
+        bufferInsert(response, header);
         bufferInsert(response, info);
 
         return response;

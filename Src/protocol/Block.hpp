@@ -42,7 +42,9 @@ private:
 
     Buffer get()
     {
-        Buffer response;
+        Header header;
+        header.type = static_cast<std::underlying_type<PacketType>::type>
+            (PacketType::GetBlocksParameters);
 
         Info info;
         info.role = static_cast<std::underlying_type<ClientType>::type>(state.getClientRole(client));
@@ -50,6 +52,8 @@ private:
         Pack pack;
         pack.size = state.blocks.size();
 
+        Buffer response;
+        bufferInsert(response, header);
         bufferInsert(response, info);
         bufferInsert(response, pack);
 

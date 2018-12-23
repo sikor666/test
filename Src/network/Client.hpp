@@ -13,12 +13,14 @@ class Client
 public:
     Client()
     {
-        socket.connect(SERV_ADDR, SERV_PORT);
+        socket.connect(STUN_ADDR, STUN_PORT);
+        //socket.unblock();
     }
 
     bool connect()
     {
-        auto type = static_cast<std::underlying_type<PacketType>::type>(PacketType::Connect);
+        auto type = static_cast<std::underlying_type<PacketType>::type>
+            (PacketType::Connect);
 
         Header header;
         header.type = type;
@@ -26,25 +28,15 @@ public:
         Buffer buffer;
         bufferInsert(buffer, header);
 
-        Buffer response = send(std::move(buffer));
+        send(std::move(buffer));
 
-        Info info;
-
-        if (response.size() == sizeof(info))
-        {
-            bufferRead(response, info);
-
-            role = static_cast<ClientType>(info.role);
-
-            return true;
-        }
-
-        return false;
+        return true;
     }
 
     bool disconnect()
     {
-        auto type = static_cast<std::underlying_type<PacketType>::type>(PacketType::Disconnect);
+        auto type = static_cast<std::underlying_type<PacketType>::type>
+            (PacketType::Disconnect);
 
         Header header;
         header.type = type;
@@ -52,7 +44,7 @@ public:
         Buffer buffer;
         bufferInsert(buffer, header);
 
-        Buffer response = send(std::move(buffer));
+        //send(std::move(buffer));
 
         return true;
     }
@@ -77,7 +69,7 @@ public:
         bufferInsert(buffer, header);
         bufferInsert(buffer, ball);
 
-        Buffer response = send(std::move(buffer));
+        //send(std::move(buffer));
     }
 
     template<typename T>
@@ -106,7 +98,7 @@ public:
             bufferInsert(buffer, block);
         }
 
-        Buffer response = send(std::move(buffer));
+        //send(std::move(buffer));
     }
 
     void setPlayerPosition(int playerIndex, float playerPosition)
@@ -129,7 +121,7 @@ public:
         bufferInsert(buffer, pack);
         bufferInsert(buffer, paddle);
 
-        Buffer response = send(std::move(buffer));
+        //send(std::move(buffer));
     }
 
     void setNumberLives(int numberLives)
@@ -147,7 +139,7 @@ public:
         bufferInsert(buffer, header);
         bufferInsert(buffer, lives);
 
-        Buffer response = send(std::move(buffer));
+        //send(std::move(buffer));
     }
 
     template<typename T>
@@ -162,25 +154,7 @@ public:
         Buffer buffer;
         bufferInsert(buffer, header);
 
-        Buffer response = send(std::move(buffer));
-
-        Info info;
-        Pack pack;
-        PaddlePosition paddle;
-
-        if (response.size() == sizeof(info) + sizeof(pack) + sizeof(paddle) * 4)
-        {
-            bufferRead(response, info);
-            role = static_cast<ClientType>(info.role);
-
-            bufferRead(response, pack);
-
-            for (size_t i = 0; i < pack.size; i++)
-            {
-                bufferRead(response, paddle);
-                players[paddle.index].rect.left = paddle.position;
-            }
-        }
+        //send(std::move(buffer));
     }
 
     void getBallParameters(float& ballSpeed, float& ballDirX, float& ballDirY,
@@ -195,24 +169,7 @@ public:
         Buffer buffer;
         bufferInsert(buffer, header);
 
-        Buffer response = send(std::move(buffer));
-
-        Info info;
-        BallParameters ball;
-
-        if (response.size() == sizeof(info) + sizeof(ball))
-        {
-            bufferRead(response, info);
-            role = static_cast<ClientType>(info.role);
-
-            bufferRead(response, ball);
-
-            ballSpeed = ball.speed;
-            ballDirX = ball.dirx;
-            ballDirY = ball.diry;
-            ballPosLeft = ball.left;
-            ballPosTop = ball.top;
-        }
+        //send(std::move(buffer));
     }
 
     template<typename T, typename Block, typename Rect>
@@ -227,28 +184,7 @@ public:
         Buffer buffer;
         bufferInsert(buffer, header);
 
-        Buffer response = send(std::move(buffer));
-
-        Info info;
-        bufferRead(response, info);
-        role = static_cast<ClientType>(info.role);
-
-        Pack pack;
-        bufferRead(response, pack);
-
-        blocks.clear();
-
-        Block b;
-        BlocksParameters block;
-
-        //FIXME: Pack size sometimes is to long, when two servers running
-        for (size_t i = 0; i < pack.size; i++)
-        {
-            bufferRead(response, block);
-            b.rect = Rect(block.left, block.top, blockSizeX, blockSizeY);
-            b.level = block.level;
-            blocks.push_back(b);
-        }
+        //send(std::move(buffer));
     }
 
     void getNumberLives(int& numberLives)
@@ -262,19 +198,142 @@ public:
         Buffer buffer;
         bufferInsert(buffer, header);
 
-        Buffer response = send(std::move(buffer));
+        //send(std::move(buffer));
+    }
 
-        Info info;
-        Lives lives;
+    template<typename R, typename B, typename P, typename T, typename V>
+    void parseAll(R& ballRect, B& blockIn, P& players, T& blocks, V& ballDir, V blockSize,
+                  float& ballSpeed, int& numberLives)
+    {
+        Buffer response;
 
-        if (response.size() == sizeof(info) + sizeof(lives))
+        do
         {
-            bufferRead(response, info);
-            role = static_cast<ClientType>(info.role);
 
-            bufferRead(response, lives);
-            numberLives = lives.number;
+        response = read();
+
+        Header header;
+        bufferRead(response, header);
+
+        PacketType packetType;
+
+        try
+        {
+            packetType = static_cast<PacketType>(header.type);
         }
+        catch (const std::exception&)
+        {
+            packetType = PacketType::Unknown;
+        }
+
+        switch (packetType)
+        {
+        case PacketType::Connect:
+        {
+            Info info;
+
+            if (response.size() == sizeof(info))
+            {
+                bufferRead(response, info);
+
+                role = static_cast<ClientType>(info.role);
+            }
+            break;
+        }
+        case PacketType::GetPaddlesPositions:
+        {
+            Info info;
+            Pack pack;
+            PaddlePosition paddle;
+
+            if (response.size() ==
+                sizeof(info) +
+                sizeof(pack) +
+                sizeof(paddle) * 4)
+            {
+                bufferRead(response, info);
+                role = static_cast<ClientType>(info.role);
+
+                bufferRead(response, pack);
+
+                for (size_t i = 0; i < pack.size; i++)
+                {
+                    bufferRead(response, paddle);
+                    players[paddle.index].rect.left = paddle.position;
+                }
+            }
+            break;
+        }
+        case PacketType::GetBallParameters:
+        {
+            Info info;
+            BallParameters ball;
+
+            if (response.size() == sizeof(info) + sizeof(ball))
+            {
+                bufferRead(response, info);
+                role = static_cast<ClientType>(info.role);
+
+                bufferRead(response, ball);
+
+                ballSpeed = ball.speed;
+                ballDir.x = ball.dirx;
+                ballDir.y = ball.diry;
+                ballRect.left = ball.left;
+                ballRect.top = ball.top;
+            }
+            break;
+        }
+        case PacketType::GetBlocksParameters:
+        {
+            Info info;
+            Pack pack;
+            BlocksParameters block;
+
+            size_t ii = sizeof(info);
+            size_t pp = sizeof(pack);
+            size_t bb = sizeof(block);
+
+            if (response.size() > sizeof(info) + sizeof(pack))
+            {
+                bufferRead(response, info);
+                role = static_cast<ClientType>(info.role);
+
+                bufferRead(response, pack);
+
+                if (pack.size > 24) return;
+
+                blocks.clear();
+
+                //FIXME: Pack size sometimes is to long, when two servers running
+                for (size_t i = 0; i < pack.size; i++)
+                {
+                    bufferRead(response, block);
+                    blockIn.rect = Rect(block.left, block.top, blockSize.x, blockSize.y);
+                    blockIn.level = block.level;
+                    blocks.push_back(blockIn);
+                }
+            }
+            break;
+        }
+        case PacketType::GetNumberLives:
+        {
+            Info info;
+            Lives lives;
+
+            if (response.size() == sizeof(info) + sizeof(lives))
+            {
+                bufferRead(response, info);
+                role = static_cast<ClientType>(info.role);
+
+                bufferRead(response, lives);
+                numberLives = lives.number;
+            }
+            break;
+        }
+        }
+
+        } while (response.size());
     }
 
     bool isProvider()
@@ -283,15 +342,48 @@ public:
     }
 
 private:
-    Buffer send(Buffer&& message)
+    void send(Buffer&& message)
     {
         socket.send_to(message.data(), message.size());
+    }
 
+    Buffer read()
+    {
         std::string endpoint;
-        int n = socket.recv_from(buffer, endpoint);
+        int n = socket.ready() ? socket.recv_from(buffer, endpoint) : 0;
 
         return Buffer(buffer, buffer + n);
     }
+
+    /*void parse(Buffer&& message)
+    {
+        Header header;
+        bufferRead(buffer, header);
+
+        PacketType packetType;
+
+        try
+        {
+            packetType = static_cast<PacketType>(header.type);
+        }
+        catch (const std::exception&)
+        {
+            packetType = PacketType::Unknown;
+        }
+
+        switch (packetType)
+        {
+        case PacketType::Connect:
+
+        case PacketType::GetPaddlesPositions:
+
+        case PacketType::GetBallParameters:
+
+        case PacketType::GetBlocksParameters:
+
+        case PacketType::GetNumberLives:
+        }
+    }*/
 
 private:
     UDP::Socket socket;
